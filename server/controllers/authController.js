@@ -57,7 +57,7 @@ export const register = async (req, res) => {
       text: `Welcome to plansmart website. Your account has been created with email id: ${email}`,
     };
 
-    await transporter.sendMail(mailOptions);
+    // await transporter.sendMail(mailOptions);
 
     //User successfylly register
     console.log("Registration successful. Sending response.");
@@ -94,7 +94,7 @@ export const login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: "Invalid password" });
+      return res.status(401).json({ success: false, message: "Invalid email or password." });
     }
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
@@ -105,11 +105,11 @@ export const login = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, //7 dayd cookie expire time
+      maxAge: 7 * 24 * 60 * 60 * 1000, //7 days cookie expire time
     });
 
-    //User successfylly loged in
-    return res.status(200).json({ success: true });
+    //User successfylly logged in
+    return res.status(200).json({ success: true, user: { name: user.name, email } });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -251,7 +251,7 @@ export const sendResetOtp = async (req, res) => {
 
     //Send the email
     await transporter.sendMail(mailOption);
-    return res.status(200).json({success:true, message:"OTP send to your email"});
+    return res.status(200).json({ success: true, message: "OTP send to your email" });
 
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
@@ -261,35 +261,68 @@ export const sendResetOtp = async (req, res) => {
 
 //Reset user password
 export const resetPassword = async (req, res) => {
-    const { email, otp, newPassword } = req.body;
-    if (!email || !otp || !newPassword) {
-        return res.status(400).json({ success: false, message: "Email, OTP, and new password are required" });
+  const { email, otp, newPassword } = req.body;
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({ success: false, message: "Email, OTP, and new password are required" });
+  }
+
+  try {
+    const user = await userModel.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    try {
-        const user = await userModel.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
-
-        if (user.resetOtp === "" || user.resetOtp !== otp) {
-            return res.status(400).json({ success: false, message: 'Invalid OTP' });
-        }
-
-        if (user.resetOtpExpireAt < Date.now()) {
-            return res.status(400).json({ success: false, message: 'OTP Expired' });
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-        user.password = hashedPassword;
-        user.resetOtp = '';
-        user.resetOtpExpireAt = 0;
-        await user.save();
-
-        return res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
-    } catch (err) {
-        return res.status(500).json({ success: false, message: err.message });
+    if (user.resetOtp === "" || user.resetOtp !== otp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
     }
+
+    if (user.resetOtpExpireAt < Date.now()) {
+      return res.status(400).json({ success: false, message: 'OTP Expired' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
+    user.resetOtp = '';
+    user.resetOtpExpireAt = 0;
+    await user.save();
+
+    return res.status(200).json({ success: true, message: 'Password has been reset successfully.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 }
+
+
+
+
+
+
+
+
+
+
+const waitCall = () => {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve()
+    }, 4000);
+  })
+}
+
+
+export const checkUseLogin = async (req, res) => {
+  console.log(req.url);
+  try {
+    if (req.body.userId) {
+      const { name, email } = await userModel.findOne({ _id: req.body.userId })
+      return res.status(200).json({ success: true, user: { name, email } });
+    }
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Not Authorized. Login Again.' });
+  }
+}
+
+
+
 
